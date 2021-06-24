@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>vuex debug</title>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+  <script src="https://unpkg.com/vuex@3.6.2/dist/vuex.js"></script>
+</head>
+
+<body>
+  <div id="app">
+    123123
+  </div>
+
+</body>
+<script>
+  const store = new Vuex.Store({
+    state: {
+      count: 0
+    },
+    getters: {
+      evenOrOdd: state => state.count % 2 === 0 ? 'even' : 'odd'
+    },
+    actions: {
+      increment: ({ commit }) => commit('increment'),
+      decrement: ({ commit }) => commit('decrement')
+    },
+    mutations: {
+      increment(state) {
+        state.count++
+      },
+      decrement(state) {
+        state.count--
+      }
+    }
+  })
+
+  // app.js
+  new Vue({
+    el: document.querySelector('#app'),
+    store, // 传入store，在beforeCreate钩子中会用到
+    render: h => h
+  })
+</script>
+
+</html>

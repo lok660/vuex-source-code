@@ -6,7 +6,7 @@ import { forEachValue, isObject, isPromise, assert, partial } from './util'
 let Vue // bind on install
 
 export class Store {
-  constructor (options = {}) {
+  constructor(options = {}) {
     // Auto install if it is not done yet and `window` has `Vue`.
     // To allow users to avoid auto-installation in some cases,
     // this code should be placed here. See #731
@@ -26,18 +26,19 @@ export class Store {
     } = options
 
     // store internal state
-    this._committing = false
-    this._actions = Object.create(null)
-    this._actionSubscribers = []
-    this._mutations = Object.create(null)
-    this._wrappedGetters = Object.create(null)
-    this._modules = new ModuleCollection(options)
-    this._modulesNamespaceMap = Object.create(null)
-    this._subscribers = []
-    this._watcherVM = new Vue()
-    this._makeLocalGettersCache = Object.create(null)
+    this._committing = false    // // 表示提交的状态，当通过mutations方法改变state时，该状态为true，state值改变完后，该状态变为false; 在严格模式下会监听state值的改变，当改变时，_committing为false时，会发出警告，即表明state值的改变不是经过mutations的
+    this._actions = Object.create(null)    // 用于记录所有存在的actions方法名称（包括全局的和命名空间内的，且允许重复定义）      
+    this._actionSubscribers = []    // 存放actions方法订阅的回调函数
+    this._mutations = Object.create(null)   // 用于记录所有存在的的mutations方法名称（包括全局的和命名空间内的，且允许重复定义）
+    this._wrappedGetters = Object.create(null)    // 收集所有模块包装后的的getters（包括全局的和命名空间内的，但不允许重复定义）
+    this._modules = new ModuleCollection(options)   // 根据传入的options配置，注册各个模块，此时只是注册、建立好了各个模块的关系，已经定义了各个模块的state状态，但getters、mutations等方法暂未注册
+    this._modulesNamespaceMap = Object.create(null)   // 存储定义了命名空间的模块
+    this._subscribers = []    // 存放mutations方法订阅的回调
+    this._watcherVM = new Vue()   //  new Vue实例用于监听state、getters
+    this._makeLocalGettersCache = Object.create(null)   // getters的本地缓存
 
     // bind commit and dispatch to self
+    // 替换 this 中的 dispatch, commit 方法，将 this 指向 store
     const store = this
     const { dispatch, commit } = this
     this.dispatch = function boundDispatch (type, payload) {
@@ -55,10 +56,12 @@ export class Store {
     // init root module.
     // this also recursively registers all sub-modules
     // and collects all module getters inside this._wrappedGetters
+    //  加载安装模块
     installModule(this, state, [], this._modules.root)
 
     // initialize the store vm, which is responsible for the reactivity
     // (also registers _wrappedGetters as computed properties)
+    //  重置虚拟 store,使其成为响应式
     resetStoreVM(this, state)
 
     // apply plugins
@@ -69,7 +72,7 @@ export class Store {
       devtoolPlugin(this)
     }
   }
-
+  // 获取 state, 是从虚拟 state 上获取的，为了区别，所以使用的是 $$state
   get state () {
     return this._vm._data.$$state
   }
@@ -246,6 +249,9 @@ export class Store {
 
   _withCommit (fn) {
     const committing = this._committing
+    //  调用withCommit修改state的值时会将store的committing值置为true,内部会有断言检查该值
+    //  在严格模式下只允许使用mutation来修改store中的值，而不允许直接修改store的数值 */
+    const committing = this._committing
     this._committing = true
     fn()
     this._committing = committing
@@ -282,11 +288,13 @@ function resetStoreVM (store, state, hot) {
   const oldVm = store._vm
 
   // bind store public getters
-  store.getters = {}
+  store.getters = {}    // 在实例store上设置getters对象
   // reset local getters cache
-  store._makeLocalGettersCache = Object.create(null)
+  store._makeLocalGettersCache = Object.create(null)    //  清空本地缓存
   const wrappedGetters = store._wrappedGetters
   const computed = {}
+  //  循环所有处理过的getters，并新建computed对象进行存储
+  //  通过Object.defineProperty方法为getters对象建立属性，使得我们通过this.$store.getters.xxxgetter能够访问到该getters
   forEachValue(wrappedGetters, (fn, key) => {
     // use computed to leverage its lazy-caching mechanism
     // direct inline function use will lead to closure preserving oldVm.
@@ -303,6 +311,7 @@ function resetStoreVM (store, state, hot) {
   // some funky global mixins
   const silent = Vue.config.silent
   Vue.config.silent = true
+  //    设置新的storeVm，将当前初始化的state以及getters作为computed属性
   store._vm = new Vue({
     data: {
       $$state: state
@@ -316,14 +325,17 @@ function resetStoreVM (store, state, hot) {
     enableStrictMode(store)
   }
 
+  // 若不是初始化过程执行的该方法，将旧的组件state设置为null，
   if (oldVm) {
     if (hot) {
       // dispatch changes in all subscribed watchers
       // to force getter re-evaluation for hot reloading.
+      // 解除对旧的vm对state的引用
       store._withCommit(() => {
         oldVm._data.$$state = null
       })
     }
+    //  强制更新所有监听者(watchers)，待更新生效，DOM更新完成后，执行vm组件的destroy方法进行销毁，减少内存的占用
     Vue.nextTick(() => oldVm.$destroy())
   }
 }
@@ -536,6 +548,7 @@ function unifyObjectStyle (type, payload, options) {
   return { type, payload, options }
 }
 
+//  install  entry
 export function install (_Vue) {
   if (Vue && _Vue === Vue) {
     if (__DEV__) {
@@ -546,5 +559,6 @@ export function install (_Vue) {
     return
   }
   Vue = _Vue
+  // install1.调用 applyMixin 方法来初始化 vuex
   applyMixin(Vue)
 }
