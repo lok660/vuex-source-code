@@ -2,8 +2,9 @@ import Module from './module'
 import { assert, forEachValue } from '../util'
 
 export default class ModuleCollection {
-  constructor (rawRootModule) {
+  constructor(rawRootModule) {
     // register root module (Vuex.Store options)
+    // 递归注册模块
     this.register([], rawRootModule, false)
   }
 
@@ -30,16 +31,21 @@ export default class ModuleCollection {
       assertRawModule(path, rawModule)
     }
 
-    const newModule = new Module(rawModule, runtime)
-    if (path.length === 0) {
-      this.root = newModule
+    const newModule = new Module(rawModule, runtime)  //  初始化一个新模块
+    if (path.length === 0) {  // 当前没有别的模块
+      this.root = newModule   // 则此模块为根模块
     } else {
+      // 获取到新模块从属的父模块，所以是path.slice(0, -1)
+      // 最后一个元素就是我们要添加的子模块的名称
       const parent = this.get(path.slice(0, -1))
-      parent.addChild(path[path.length - 1], newModule)
+      parent.addChild(path[path.length - 1], newModule)   // 在父模块中添加新的子模块
     }
 
     // register nested modules
+    // 如果有嵌套模块
     if (rawModule.modules) {
+      //  遍历所有的子模块,并进行注册
+      //  在path中存储除了根模块以外所有子模块的名词
       forEachValue(rawModule.modules, (rawChildModule, key) => {
         this.register(path.concat(key), rawChildModule, runtime)
       })

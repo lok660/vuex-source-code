@@ -85,6 +85,7 @@ export class Store {
 
   commit (_type, _payload, _options) {
     // check object-style commit
+    //  检验参数
     const {
       type,
       payload,
@@ -92,6 +93,7 @@ export class Store {
     } = unifyObjectStyle(_type, _payload, _options)
 
     const mutation = { type, payload }
+    //  去除type对应的mutation方法
     const entry = this._mutations[type]
     if (!entry) {
       if (__DEV__) {
@@ -99,12 +101,15 @@ export class Store {
       }
       return
     }
+    //    执行mutation中所有的方法
+    //    专用修改state方法，其他修改state方法均是非法修改
     this._withCommit(() => {
       entry.forEach(function commitIterator (handler) {
         handler(payload)
       })
     })
 
+    // 订阅者函数遍历执行，传入当前的mutation对象和当前的state
     this._subscribers
       .slice() // shallow copy to prevent iterator invalidation if subscriber synchronously calls unsubscribe
       .forEach(sub => sub(mutation, this.state))
@@ -125,10 +130,10 @@ export class Store {
     const {
       type,
       payload
-    } = unifyObjectStyle(_type, _payload)
+    } = unifyObjectStyle(_type, _payload)   //  配置参数处理
 
     const action = { type, payload }
-    const entry = this._actions[type]
+    const entry = this._actions[type]   //  当前type所有action处理函数集合
     if (!entry) {
       if (__DEV__) {
         console.error(`[vuex] unknown action type: ${type}`)
@@ -248,7 +253,6 @@ export class Store {
   }
 
   _withCommit (fn) {
-    const committing = this._committing
     //  调用withCommit修改state的值时会将store的committing值置为true,内部会有断言检查该值
     //  在严格模式下只允许使用mutation来修改store中的值，而不允许直接修改store的数值 */
     const committing = this._committing
@@ -370,17 +374,20 @@ function installModule (store, rootState, path, module, hot) {
 
   const local = module.context = makeLocalContext(store, namespace, path)
 
+  // 注册对应模块的mutation，供state修改使用
   module.forEachMutation((mutation, key) => {
     const namespacedType = namespace + key
     registerMutation(store, namespacedType, mutation, local)
   })
 
+  // 注册对应模块的action，供数据操作、提交mutation等异步操作使用
   module.forEachAction((action, key) => {
     const type = action.root ? key : namespace + key
     const handler = action.handler || action
     registerAction(store, type, handler, local)
   })
 
+  // 注册对应模块的getters，供state读取使用
   module.forEachGetter((getter, key) => {
     const namespacedType = namespace + key
     registerGetter(store, namespacedType, getter, local)
@@ -522,9 +529,12 @@ function registerGetter (store, type, rawGetter, local) {
   }
 }
 
+//  严格模式
 function enableStrictMode (store) {
+  //  利用vm的$watch方法来观察$$state,在它被修改的时候进入回调
   store._vm.$watch(function () { return this._data.$$state }, () => {
     if (__DEV__) {
+      //  当store._committing为false的时候会触发断言，抛出异常
       assert(store._committing, `do not mutate vuex store state outside mutation handlers.`)
     }
   }, { deep: true, sync: true })
