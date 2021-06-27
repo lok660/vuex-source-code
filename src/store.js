@@ -31,6 +31,12 @@ export class Store {
     this._actionSubscribers = []    // 存放actions方法订阅的回调函数
     this._mutations = Object.create(null)   // 用于记录所有存在的的mutations方法名称（包括全局的和命名空间内的，且允许重复定义）
     this._wrappedGetters = Object.create(null)    // 收集所有模块包装后的的getters（包括全局的和命名空间内的，但不允许重复定义）
+    /*根据Store传入的配置项，构建模块 module 树，整棵 module 树存放在 this.root 属性上：
+      1、Vuex 支持 store 分模块传入，存储分析后的 modules；
+      2、ModuleCollection 主要将实例 store 传入的 options 对象整个构造为一个 module 对象，
+     并循环调用 this.register([key], rawModule, false) 为其中的 modules 属性进行模块注册，
+     使其都成为 module 对象，最后 options 对象被构造成一个完整的组件树。
+    */
     this._modules = new ModuleCollection(options)   // 根据传入的options配置，注册各个模块，此时只是注册、建立好了各个模块的关系，已经定义了各个模块的state状态，但getters、mutations等方法暂未注册
     this._modulesNamespaceMap = Object.create(null)   // 存储定义了命名空间的模块
     this._subscribers = []    // 存放mutations方法订阅的回调
@@ -77,12 +83,19 @@ export class Store {
     return this._vm._data.$$state
   }
 
+  //  只能通过__withCommit修改state的状态
   set state (v) {
     if (__DEV__) {
       assert(false, `use store.replaceState() to explicit replace store state.`)
     }
   }
 
+  /*统一commit传入参数：
+    1、以载荷形式分发（默认提取为type、payload）
+       store.commit('incrementAsync', { amount: 10 })
+    2、以对象形式分发
+       store.commit({ type: 'incrementAsync', amount: 10 })
+  */
   commit (_type, _payload, _options) {
     // check object-style commit
     //  检验参数
@@ -93,16 +106,17 @@ export class Store {
     } = unifyObjectStyle(_type, _payload, _options)
 
     const mutation = { type, payload }
-    //  去除type对应的mutation方法
+    //  取出type对应的mutation方法
     const entry = this._mutations[type]
     if (!entry) {
+      //  不存在此mutation type,报错
       if (__DEV__) {
         console.error(`[vuex] unknown mutation type: ${type}`)
       }
       return
     }
-    //    执行mutation中所有的方法
-    //    专用修改state方法，其他修改state方法均是非法修改
+
+    //  专用修改state方法，其他修改state方法均是非法修改
     this._withCommit(() => {
       entry.forEach(function commitIterator (handler) {
         handler(payload)
@@ -125,6 +139,12 @@ export class Store {
     }
   }
 
+  /*统一dispatch传入参数：
+      1、以载荷形式分发（默认提取为type、payload）
+        store.dispatch('incrementAsync', { amount: 10 })
+      2、以对象形式分发
+     store.dispatch({ type: 'incrementAsync', amount: 10 })
+*/
   dispatch (_type, _payload) {
     // check object-style dispatch
     const {
@@ -141,6 +161,7 @@ export class Store {
       return
     }
 
+    //  调用_actionSubscribers中所有的before方法
     try {
       this._actionSubscribers
         .slice() // shallow copy to prevent iterator invalidation if subscriber synchronously calls unsubscribe
@@ -157,9 +178,11 @@ export class Store {
       ? Promise.all(entry.map(handler => handler(payload)))
       : entry[0](payload)
 
+    //  返回Promise
     return new Promise((resolve, reject) => {
       result.then(res => {
         try {
+          //  调用_actionSubscribers中所有的after方法
           this._actionSubscribers
             .filter(sub => sub.after)
             .forEach(sub => sub.after(action, this.state))
@@ -186,10 +209,12 @@ export class Store {
     })
   }
 
+  //  在commit函数中执行的订阅函数
   subscribe (fn, options) {
     return genericSubscribe(fn, this._subscribers, options)
   }
 
+  //  在 dispatch 函数中执行的订阅函数
   subscribeAction (fn, options) {
     const subs = typeof fn === 'function' ? { before: fn } : fn
     return genericSubscribe(subs, this._actionSubscribers, options)
@@ -481,15 +506,21 @@ function makeLocalGetters (store, namespace) {
 }
 
 function registerMutation (store, type, handler, local) {
+  // 取出对应type的mutations-handler集合
   const entry = store._mutations[type] || (store._mutations[type] = [])
+  // commit实际调用的不是我们传入的handler，而是经过封装的
   entry.push(function wrappedMutationHandler (payload) {
+    // 调用handler并将state传入
     handler.call(store, local.state, payload)
   })
 }
 
 function registerAction (store, type, handler, local) {
+  // 取出对应type的actions-handler集合
   const entry = store._actions[type] || (store._actions[type] = [])
+  // 存储新的封装过的action-handler
   entry.push(function wrappedActionHandler (payload) {
+    // 传入 state 等对象供我们原action-handler使用
     let res = handler.call(store, {
       dispatch: local.dispatch,
       commit: local.commit,
@@ -499,6 +530,7 @@ function registerAction (store, type, handler, local) {
       rootState: store.state
     }, payload)
     if (!isPromise(res)) {
+      // action需要支持promise进行链式调用，这里进行兼容处理
       res = Promise.resolve(res)
     }
     if (store._devtoolHook) {
@@ -513,13 +545,16 @@ function registerAction (store, type, handler, local) {
 }
 
 function registerGetter (store, type, rawGetter, local) {
+  // getters只允许存在一个处理函数，若重复需要报错
   if (store._wrappedGetters[type]) {
     if (__DEV__) {
       console.error(`[vuex] duplicate getter key: ${type}`)
     }
     return
   }
+  // 存储封装过的getters处理函数
   store._wrappedGetters[type] = function wrappedGetter (store) {
+    // 为原getters传入对应状态
     return rawGetter(
       local.state, // local state
       local.getters, // local getters
