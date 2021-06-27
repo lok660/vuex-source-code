@@ -220,13 +220,16 @@ export class Store {
     return genericSubscribe(subs, this._actionSubscribers, options)
   }
 
+  //  提供监听 state 和 getter 变化的 watch
   watch (getter, cb, options) {
     if (__DEV__) {
       assert(typeof getter === 'function', `store.watch only accepts a function.`)
     }
+    //  本质就是一个Vue实例,调用$watch方法
     return this._watcherVM.$watch(() => getter(this.state, this.getters), cb, options)
   }
 
+  //  提供“时空穿梭”功能，即返回到指定的 state 状态
   replaceState (state) {
     this._withCommit(() => {
       this._vm._data.$$state = state
@@ -234,14 +237,28 @@ export class Store {
   }
 
   registerModule (path, rawModule, options = {}) {
-    if (typeof path === 'string') path = [path]
+    if (typeof path === 'string') path = [path]   //  模块路径保证为数组
 
     if (__DEV__) {
       assert(Array.isArray(path), `module path must be a string or an Array.`)
       assert(path.length > 0, 'cannot register the root module by using registerModule.')
     }
-
+    /*根据Store传入的配置项，构建模块 module 树，整棵 module 树存放在 this.root 属性上：
+      1、Vuex 支持 store 分模块传入，存储分析后的 modules；
+      2、ModuleCollection 主要将实例 store 传入的 options 对象整个构造为一个 module 对象，
+         并循环调用 this.register([key], rawModule, false) 为其中的 modules 属性进行模块注册，
+         使其都成为 module 对象，最后 options 对象被构造成一个完整的组件树。
+    */
     this._modules.register(path, rawModule)
+    /*module 安装：
+      1、存储命名空间 namespace 对应的 module 在 store 的 _modulesNamespaceMap 属性中
+      2、设置当前 module 为响应式、
+      3、设置当前 module 局部的 dispatch、commit 方法以及 getters 和 state
+      4、将局部的 mutations 注册到全局 store 的 _mutations 属性下、
+     将局部的 actions 注册到全局 store 的 _actions 属性下、
+     将局部的 getters 注册到全局 store 的 _wrappedGetters 属性下、
+     子 module 的安装
+*/
     installModule(this, this.state, path, this._modules.get(path), options.preserveState)
     // reset store to update getters...
     resetStoreVM(this, this.state)
@@ -254,11 +271,15 @@ export class Store {
       assert(Array.isArray(path), `module path must be a string or an Array.`)
     }
 
+    //  根据当前传入 path，移除对应的 module 模块
     this._modules.unregister(path)
     this._withCommit(() => {
+      //  根据当前传入 path 获取父模块 module 的 state
       const parentState = getNestedState(this.state, path.slice(0, -1))
+      //  动态删除响应式数据：target、key
       Vue.delete(parentState, path[path.length - 1])
     })
+    //  module 模块的重置：数据重置 + 重装module 树 + 重置 store 的 vue 的 实例
     resetStore(this)
   }
 
@@ -273,6 +294,8 @@ export class Store {
   }
 
   hotUpdate (newOptions) {
+    //  1、更新命名空间、更新 actions、更新 mutations、更新 getters；
+    //  2、递归调用更新
     this._modules.update(newOptions)
     resetStore(this, true)
   }
@@ -301,6 +324,7 @@ function genericSubscribe (fn, subs, options) {
   }
 }
 
+//  重置Store
 function resetStore (store, hot) {
   store._actions = Object.create(null)
   store._mutations = Object.create(null)
@@ -334,7 +358,6 @@ function resetStoreVM (store, state, hot) {
       enumerable: true // for local getters
     })
   })
-
   // use a Vue instance to store the state tree
   // suppress warnings just in case the user has added
   // some funky global mixins
@@ -369,20 +392,25 @@ function resetStoreVM (store, state, hot) {
   }
 }
 
+//  注册mutation、action以及getter，同时递归安装所有子module
 function installModule (store, rootState, path, module, hot) {
   const isRoot = !path.length
+  //  根据当前传入 path，获取对应的 module 模块的命名空间
   const namespace = store._modules.getNamespace(path)
 
   // register in namespace map
+  // 存储命名空间 namespace 对应的 module 在 store 的 _modulesNamespaceMap 属性中
   if (module.namespaced) {
     if (store._modulesNamespaceMap[namespace] && __DEV__) {
       console.error(`[vuex] duplicate namespace ${namespace} for the namespaced module ${path.join('/')}`)
     }
+    //  将命名空间 namespace 字符串路径存入 Store
     store._modulesNamespaceMap[namespace] = module
   }
 
   // set state
   if (!isRoot && !hot) {
+    //  根据当前传入 path（除去最后一项，即自身；此时 path 最后一项为 当前 path 的父级），获取父模块
     const parentState = getNestedState(rootState, path.slice(0, -1))
     const moduleName = path[path.length - 1]
     store._withCommit(() => {
@@ -397,6 +425,7 @@ function installModule (store, rootState, path, module, hot) {
     })
   }
 
+  //  定义 local 变量和 module.context 的值：设置当前 module 局部的 dispatch、commit 方法以及 getters 和 state
   const local = module.context = makeLocalContext(store, namespace, path)
 
   // 注册对应模块的mutation，供state修改使用
@@ -427,6 +456,7 @@ function installModule (store, rootState, path, module, hot) {
  * make localized dispatch, commit, getters and state
  * if there is no namespace, just use root ones
  */
+//  为该module设置局部的 dispatch、commit方法以及getters和state
 function makeLocalContext (store, namespace, path) {
   const noNamespace = namespace === ''
 
@@ -539,6 +569,7 @@ function registerAction (store, type, handler, local) {
         throw err
       })
     } else {
+      /// 返回Promise
       return res
     }
   })
