@@ -23,7 +23,7 @@ export default function (Vue) {
 
   //  install3.根组件从这里拿到 store，子组件从父组件拿到，这样一层一层传递下去，
   //  实现所有组件都有$store属性，这样我们就可以在任何组件中通过this.$store 访问到 store
-  function vuexInit () {
+  function vuexInit() {
     const options = this.$options
     // store injection
     //  根组件

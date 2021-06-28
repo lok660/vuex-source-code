@@ -5,7 +5,7 @@ const target = typeof window !== 'undefined'
     : {}
 const devtoolHook = target.__VUE_DEVTOOLS_GLOBAL_HOOK__
 
-export default function devtoolPlugin (store) {
+export default function devtoolPlugin(store) {
   if (!devtoolHook) return
 
   store._devtoolHook = devtoolHook
@@ -23,7 +23,7 @@ export default function devtoolPlugin (store) {
     devtoolHook.emit('vuex:mutation', mutation, state)
   }, { prepend: true })
 
-  // 3. action被执行时，触发hook
+  // 4. action被执行时，触发hook
   store.subscribeAction((action, state) => {
     devtoolHook.emit('vuex:action', action, state)
   }, { prepend: true })
